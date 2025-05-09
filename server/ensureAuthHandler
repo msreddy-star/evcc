@@ -10,6 +10,13 @@ import (
 	"github.com/gorilla/mux"
 )
 
+// Paths excluded from auth middleware
+var excludedPaths = []string{
+	"/public",       // e.g., documentation
+	"/healthcheck",  // for uptime monitors
+}
+
+
 const authCookieName = "auth"
 
 type updatePasswordRequest struct {
@@ -139,6 +146,36 @@ func ensureAuthHandler(auth auth.Auth) mux.MiddlewareFunc {
 				next.ServeHTTP(w, r)
 				return
 			}
+
+			func ensureAuthHandler(auth auth.Auth) mux.MiddlewareFunc {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Skip auth for excluded paths
+			for _, path := range excludedPaths {
+				if strings.HasPrefix(r.URL.Path, path) {
+					next.ServeHTTP(w, r)
+					return
+				}
+			}
+
+			if auth.Disabled() {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			// check jwt token
+			ok, err := auth.ValidateJwtToken(jwtFromRequest(r))
+			if !ok || err != nil {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+
+			// all clear, continue
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 
 			// check jwt token
 			ok, err := auth.ValidateJwtToken(jwtFromRequest(r))
